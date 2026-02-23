@@ -1,0 +1,429 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-arm64-openssl-1.1.x", "rhel-openssl-3.0.x"]
+}
+
+// ── AUTH ────────────────────────────────────────────────
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ── USER ────────────────────────────────────────────────
+model User {
+  id          String   @id @default(cuid())
+  username    String?  @unique
+  first_name  String?
+  last_name   String?
+  email       String   @unique
+  password    String
+  emailVerified DateTime?
+  image       String?
+
+  accounts           Account[]
+  sessions           Session[]
+  roles              UserRole[]
+  locations          UserLocation[]
+  createdCustomers   Customers[]        @relation("UserCreatedCustomers")
+  products           Products[]         @relation("ProductCreator")
+  managerId          String?
+  manager            User?              @relation("UserManagerHierarchy", fields: [managerId], references: [id])
+  managedBy          User[]             @relation("UserManagerHierarchy")
+  managedUsers       UserManager[]      @relation("Manages")
+  managerRecord      UserManager?       @relation("ManagedBy")
+  notifications      Notifications[]
+  uploadedFiles      UploadedFile[]
+  folders            Folder[]
+  files              File[]
+  emails             Email[]
+  assignments        UserEmailAssignment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ── ROLES & PERMISSIONS ─────────────────────────────────
+model Roles {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  isDefault   Boolean  @default(false)
+  permissions RolesOnPermissions[]
+  users       UserRole[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+
+  roles            RolesOnPermissions[]
+  folder_permissions FolderPermission[]
+  file_permissions   FilePermission[]
+}
+
+model RolesOnPermissions {
+  id           String @id @default(cuid())
+  roleId       String
+  permissionId String
+
+  role       Roles      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+}
+
+model UserRole {
+  id     String @id @default(cuid())
+  userId String
+  roleId String
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Roles @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+}
+
+// ── LOCATIONS ───────────────────────────────────────────
+model Location {
+  id    String @id @default(cuid())
+  name  String?
+  city  String?
+  state String?
+
+  users UserLocation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model UserLocation {
+  id         String @id @default(cuid())
+  userId     String
+  locationId String
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, locationId])
+}
+
+// ── OTP & NOTIFICATIONS ─────────────────────────────────
+model UserOtp {
+  id    String @id @default(cuid())
+  email String
+  otp   String
+}
+
+model Notifications {
+  id        String   @id @default(cuid())
+  user_id   String
+  message   String
+  url       String?
+  image_url String?
+  is_read   Boolean  @default(false)
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+// ── CUSTOMERS & COMPANIES ───────────────────────────────
+model Customers {
+  id           String  @id @default(cuid())
+  firstName    String?
+  lastName     String?
+  email        String? @unique
+  address      String?
+  phoneNumber  String?
+  countriesId  String?
+  creatorId    String?
+  companiesId  String?
+
+  user      User?       @relation("UserCreatedCustomers", fields: [creatorId], references: [id], onDelete: SetNull)
+  countries Countries?  @relation(fields: [countriesId], references: [id])
+  companies Companies?  @relation(fields: [companiesId], references: [id])
+  customerProducts CustomerProducts[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Companies {
+  id              String @id @default(cuid())
+  name            String?
+  slug            String @unique
+  email           String? @unique
+  address         String?
+  companiesTypesId String?
+
+  companiesTypes CompaniesTypes? @relation(fields: [companiesTypesId], references: [id])
+  customers      Customers[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CompaniesTypes {
+  id   String @id @default(cuid())
+  name String?
+
+  companies Companies[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Countries {
+  id   String @id @default(cuid())
+  name String
+  iso3 String
+  iso2 String
+  numeric_code String
+  phonecode    String @unique
+  emoji        String
+  emojiU       String
+
+  customers Customers[]
+}
+
+// ── PRODUCTS ────────────────────────────────────────────
+model Products {
+  id           String @id @default(cuid())
+  userId       String
+  name         String?
+  slug         String @unique
+  product_img  String?
+  categoriesId String?
+
+  categories       Categories?        @relation(fields: [categoriesId], references: [id])
+  customerProducts CustomerProducts[]
+  user             User               @relation("ProductCreator", fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Categories {
+  id    String @id @default(cuid())
+  name  String @unique
+  slug  String @unique
+
+  products Products[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CustomerProducts {
+  id           String @id @default(cuid())
+  customersId  String
+  productsId   String
+
+  customers Customers @relation(fields: [customersId], references: [id], onDelete: Cascade)
+  products  Products  @relation(fields: [productsId], references: [id], onDelete: Cascade)
+
+  @@unique([customersId, productsId])
+}
+
+// ── USER MANAGER ────────────────────────────────────────
+model UserManager {
+  id       String @id @default(cuid())
+  userId   String @unique
+  managerId String
+
+  user   User @relation("ManagedBy", fields: [userId], references: [id], onDelete: Cascade)
+  manager User @relation("Manages", fields: [managerId], references: [id], onDelete: Cascade)
+}
+
+// ── FILE SYSTEM ─────────────────────────────────────────
+model UploadedFile {
+  id             String   @id @default(cuid())
+  fileName       String
+  fileUniqueName String
+  ipAddress      String?
+  userId         String?
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Folder {
+  id        String   @id @default(cuid())
+  name      String
+  parentId  String?
+  userId    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  files      File[]
+  parent     Folder?           @relation("FolderToFolder", fields: [parentId], references: [id], onDelete: Cascade)
+  children   Folder[]          @relation("FolderToFolder")
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permissions FolderPermission[]
+
+  @@index([parentId])
+  @@index([userId])
+}
+
+model File {
+  id             String     @id @default(cuid())
+  name           String
+  fileUniqueName String
+  path           String
+  size           BigInt
+  mimeType       String
+  status         FileStatus
+  folderId       String?
+  userId         String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  folder      Folder?           @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permissions FilePermission[]
+
+  @@index([folderId])
+  @@index([userId])
+}
+
+model FolderPermission {
+  id           String @id @default(cuid())
+  folderId     String
+  permissionId String
+
+  folder     Folder     @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([folderId, permissionId])
+}
+
+model FilePermission {
+  id           String @id @default(cuid())
+  fileId       String
+  permissionId String
+
+  file       File       @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, permissionId])
+}
+
+// ── EMAIL ───────────────────────────────────────────────
+model Email {
+  id           String   @id @default(cuid())
+  uid          Int      @unique
+  messageId    String?  @unique
+  folder       String   @default("inbox")
+  subject      String?
+  fromName     String?
+  fromEmail    String?
+  to           String?
+  date         DateTime?
+  body         String?  @db.LongText
+  htmlBody     String?  @db.LongText
+  isRead       Boolean  @default(false)
+  isStarred    Boolean  @default(false)
+  labels       Json?
+  hasAttachment Boolean  @default(false)
+  userId       String
+
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attachments EmailAttachment[]
+  assignments UserEmailAssignment[] @relation("AssignmentToEmail") // <-- relation added
+
+  deletedAt Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([folder])
+  @@index([isRead])
+  @@index([date(sort: Desc)])
+  @@index([uid])
+}
+
+model EmailAttachment {
+  id          String @id @default(cuid())
+  fileName    String
+  contentType String
+  size        Int
+  url         String?
+
+  email   Email  @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  emailId String
+  createdAt DateTime @default(now())
+  deletedAt Boolean @default(false)
+}
+
+model UserEmailAssignment {
+  id        String   @id @default(cuid())
+  userId    String
+  emailId   String
+  email     String?   // store actual email string
+  isRead    Boolean  @default(false)
+  uid       Int      @unique
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailData Email     @relation("AssignmentToEmail", fields: [emailId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, emailId])
+  @@unique([userId, email])
+  @@index([userId])
+  @@index([emailId])
+}
+
+
+
+
+
+// ── ENUMS ───────────────────────────────────────────────
+enum FileStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
