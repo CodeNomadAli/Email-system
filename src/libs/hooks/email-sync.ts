@@ -6,7 +6,6 @@ import prisma from '@/db'
 /* =======================================================
    GLOBAL STATE
 ======================================================= */
-
 let isRunning = false
 let pendingSync = false
 let lastHistoryId: string | null = null
@@ -18,7 +17,6 @@ function log(step: string) {
 /* =======================================================
    GMAIL CLIENT (OAUTH2)
 ======================================================= */
-
 function getGmailClient() {
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, GOOGLE_REFRESH_TOKEN } = process.env
 
@@ -33,14 +31,13 @@ function getGmailClient() {
   )
 
   auth.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN })
-
-  return google.gmail({ version: 'v1', auth })
+  
+return google.gmail({ version: 'v1', auth })
 }
 
 /* =======================================================
    START GMAIL WATCH
 ======================================================= */
-
 export async function startGmailWatch() {
   try {
     const gmail = getGmailClient()
@@ -50,17 +47,16 @@ export async function startGmailWatch() {
     const res = await gmail.users.watch({
       userId: 'me',
       requestBody: {
-        topicName: 'projects/inbound-analogy-488207-p9/topics/gmail-notifications',
+        topicName: 'projects/web-application-488012/topics/gmail-notifications',
         labelIds: ['INBOX'],
       },
     })
 
     lastHistoryId = res.data.historyId || null
-
     log('✅ Gmail watch started')
     log(`📢 Initial historyId: ${lastHistoryId}`)
 
-    // Auto renew before expiration (6 days safe)
+    // Auto renew before expiration (6 days)
     setTimeout(startGmailWatch, 6 * 24 * 60 * 60 * 1000)
 
   } catch (err) {
@@ -72,9 +68,8 @@ export async function startGmailWatch() {
 /* =======================================================
    PUBSUB SUBSCRIBER
 ======================================================= */
-
 const pubSubClient = new PubSub({
-  projectId: 'inbound-analogy-488207-p9',
+  projectId: 'web-application-488012',
   keyFilename: '/root/gmail-watcher-key.json',
 })
 
@@ -92,9 +87,8 @@ subscription.on('error', (err) => {
 })
 
 /* =======================================================
-   SYNC EMAILS (CORRECT LOGIC)
+   SYNC EMAILS
 ======================================================= */
-
 async function syncEmails() {
   if (isRunning) {
     pendingSync = true
@@ -125,8 +119,6 @@ return
 
     log(`🗂️ Found ${records.length} history records`)
 
-    if (!records.length) return
-
     for (const record of records) {
       if (!record.messagesAdded) continue
 
@@ -135,7 +127,7 @@ return
 
         if (!msgId) continue
 
-        // Prevent duplicate insert
+        // Skip if message already exists
         const exists = await prisma.email.findUnique({
           where: { messageId: msgId },
           select: { id: true },
@@ -143,56 +135,63 @@ return
 
         if (exists) continue
 
-        const full = await gmail.users.messages.get({
-          userId: 'me',
-          id: msgId,
-          format: 'full',
-        })
+        try {
+          const full = await gmail.users.messages.get({
+            userId: 'me',
+            id: msgId,
+            format: 'full',
+          })
 
-        const headers = full.data.payload?.headers || []
+          // Skip if message deleted (404)
+          if (!full.data || !full.data.payload) continue
 
-        const getHeader = (name: string) =>
-          headers.find(h => h.name === name)?.value || ''
+          const headers = full.data.payload?.headers || []
+          const getHeader = (name: string) => headers.find(h => h.name === name)?.value || ''
 
-        const emailData = {
-          uid: Number(full.data.historyId!),
-          messageId: full.data.id!,
-          folder: 'inbox',
-          subject: getHeader('Subject'),
-          fromName: getHeader('From'),
-          fromEmail: getHeader('From'),
-          to: getHeader('To'),
-          date: new Date(Number(full.data.internalDate)),
-          body: extractText(full.data.payload),
-          htmlBody: extractHtml(full.data.payload),
-          isRead: !full.data.labelIds?.includes('UNREAD'),
-          isStarred: full.data.labelIds?.includes('STARRED'),
-          labels: full.data.labelIds || [],
-          hasAttachment: hasAttachments(full.data.payload),
-          userId: 'cmlw3e2t3000xoja554fdxjzx',
+          const cleanEmail = (email: string) => {
+            const match = email.match(/<(.+)>/)
+
+            
+return match ? match[1] : email
+          }
+
+          const emailData = {
+            uid: Number(full.data.historyId!),
+            messageId: full.data.id!,
+            folder: 'inbox',
+            subject: getHeader('Subject'),
+            fromName: getHeader('From'),
+            fromEmail: cleanEmail(getHeader('From')),
+            to: cleanEmail(getHeader('To')),
+            date: new Date(Number(full.data.internalDate)),
+            body: extractText(full.data.payload),
+            htmlBody: extractHtml(full.data.payload),
+            isRead: !full.data.labelIds?.includes('UNREAD'),
+            isStarred: full.data.labelIds?.includes('STARRED'),
+            labels: full.data.labelIds || [],
+            hasAttachment: hasAttachments(full.data.payload),
+            userId: 'cmlw3e2t3000xoja554fdxjzx',
+          }
+
+          await prisma.email.create({ data: emailData })
+          log(`📥 Inserted: ${emailData.subject}`)
+
+        } catch (err: any) {
+          if (err.code === 404) {
+            log(`⚠️ Message ${msgId} deleted, skipping`)
+          } else {
+            throw err
+          }
         }
-
-        await prisma.email.create({ data: emailData })
-
-        log(`📥 Inserted: ${emailData.subject}`)
       }
     }
 
-    // Update lastHistoryId to latest from API response
-    if (historyRes.data.historyId) {
-      lastHistoryId = historyRes.data.historyId
-    }
+    // Update lastHistoryId to latest
+    if (historyRes.data.historyId) lastHistoryId = historyRes.data.historyId
 
   } catch (err: any) {
-    if (err?.response?.data?.error === 'invalid_grant') {
-      log('❌ Refresh token invalid')
-    } else if (err?.response?.data?.error?.includes?.('historyId')) {
-      log('⚠️ HistoryId expired. Restarting watch...')
-      await startGmailWatch()
-    } else {
-      log('❌ Sync error')
-      console.error(err)
-    }
+    log('❌ Sync error')
+    console.error(err)
   } finally {
     isRunning = false
     log('🟢 END SYNC')
@@ -207,7 +206,6 @@ return
 /* =======================================================
    HELPERS
 ======================================================= */
-
 function extractText(payload: any): string {
   if (!payload) return ''
   if (payload.mimeType === 'text/plain' && payload.body?.data)
@@ -249,5 +247,4 @@ return payload.parts.some((p: any) => p.filename)
 /* =======================================================
    INIT
 ======================================================= */
-
 startGmailWatch().then(() => log('🏁 Gmail watcher initialized'))
