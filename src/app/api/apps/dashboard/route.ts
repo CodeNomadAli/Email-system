@@ -1,3 +1,4 @@
+// app/api/apps/dashboard/route.ts
 import { NextResponse } from 'next/server'
 
 import prisma from '@/db'
@@ -11,69 +12,64 @@ export async function GET() {
   }
 
   try {
+    // Fetch user roles
     const userWithRoles = await prisma.user.findUnique({
       where: { id: authUser.id },
-      include: {
-        roles: { include: { role: true } }
-      }
+      include: { roles: { include: { role: true } } }
     })
 
     const isAdmin = userWithRoles?.roles.some(
-      r => r.role.name === 'admin' || r.role.name === 'super-admin'
+      r => ['admin', 'super-admin'].includes(r.role.name.toLowerCase())
     )
 
-    // Common filter: only emails with at least one assignment
-    const baseWhere = {
-      deletedAt: false,
-      assignments: { some: {} }   // ← key change: must have ≥1 assignment
-    }
-
     if (isAdmin) {
-      const [
-        totalUsers,
-        totalEmails,
-        totalAssignments,
-        latestEmails,
-        latestNotifications
-      ] = await Promise.all([
+      // --------------------------
+      // Super-admin summary cards
+      // --------------------------
+      const [totalUsers, totalEmails] = await Promise.all([
         prisma.user.count(),
-        prisma.email.count({ where: baseWhere }),
-        prisma.userEmailAssignment.count(),
-        prisma.email.findMany({
-          where: baseWhere,
-          take: 100,
-          orderBy: { createdAt: 'desc' },
-          include: {
-            assignments: {
-              include: {
-                user: { select: { first_name: true, last_name: true, email: true } }
-              }
-            }
-          }
-        }),
-        prisma.notifications.findMany({
-          take: 5,
-          orderBy: { createdAt: 'desc' }
-        })
+        prisma.email.count({ where: { deletedAt: false } })
       ])
 
+      // --------------------------
+      // Table: only emails assigned to someone
+      // --------------------------
+      const latestEmails = await prisma.email.findMany({
+        where: {
+          deletedAt: false,
+          assignments: { some: {} } // must have at least 1 assignment
+        },
+        take: 100,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          assignments: {
+            include: {
+              user: { select: { first_name: true, last_name: true, email: true } }
+            }
+          }
+        }
+      })
+
+      const latestNotifications = await prisma.notifications.findMany({
+        take: 5,
+        orderBy: { createdAt: 'desc' }
+      })
+
       return NextResponse.json({
-        stats: { totalUsers, totalEmails, totalAssignments },
+        stats: { totalUsers, totalEmails },
         latestEmails,
         latestNotifications
       })
     }
 
-    // Normal user
-    const [
-      myAssignedCount,
-      myEmails,
-      myNotifications
-    ] = await Promise.all([
+    // --------------------------
+    // Normal user: only assigned emails
+    // --------------------------
+    const [myAssignedCount, myEmails, myNotifications] = await Promise.all([
       prisma.userEmailAssignment.count({ where: { userId: authUser.id } }),
       prisma.email.findMany({
         where: {
-          ...baseWhere,
+          deletedAt: false,
           assignments: { some: { userId: authUser.id } }
         },
         take: 100,
@@ -99,7 +95,6 @@ export async function GET() {
       latestEmails: myEmails,
       latestNotifications: myNotifications
     })
-
   } catch (error) {
     console.error('Dashboard error:', error)
     

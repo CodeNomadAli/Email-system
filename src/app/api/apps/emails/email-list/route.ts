@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     const page = Math.max(1, Number(searchParams.get('page')) || 1)
     const perPage = 20
 
-    let where: any = { folder, deletedAt: false }
+    let where: any = { folder, deletedAt: false,subject: null }
 
     // ── Non-admin: only assigned emails by email address ──────────────
     let userAssignments: Record<string, { isRead: boolean }> = {}

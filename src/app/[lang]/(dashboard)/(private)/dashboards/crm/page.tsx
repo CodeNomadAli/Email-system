@@ -172,6 +172,15 @@ console.log(assignedEmails)
                                 >
                                     Assign Emails
                                 </Button>
+
+                                <Button
+                                    variant="outlined"
+                                    size="small"
+                                    fullWidth
+                                    href="/email/form"
+                                >
+                                    Add Users
+                                </Button>
                             </Box>
                         </CardContent>
                     </Card>

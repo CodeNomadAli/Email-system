@@ -1,6 +1,6 @@
 // app/api/emails/route.ts
-import { NextResponse } from 'next/server'
 
+import { NextResponse } from 'next/server'
 import { getAuthUser } from '@/utils/backend-helper'
 import prisma from '@/db'
 
@@ -8,21 +8,23 @@ export async function GET(request: Request) {
   try {
     const user = await getAuthUser()
 
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
     const isSuperAdmin = user.email === 'superadmin@gmail.com'
 
     const { searchParams } = new URL(request.url)
+
     const folder = searchParams.get('folder') || 'inbox'
     const search = searchParams.get('search') || ''
     const page = Math.max(1, Number(searchParams.get('page')) || 1)
     const perPage = 20
 
-    let where: any = {
+    // 🔹 Base filters
+    const baseWhere: any = {
       folder,
       deletedAt: false,
-
-      // Skip completely empty/unusable emails
       OR: [
         { subject: { not: null } },
         { body: { not: null } },
@@ -32,29 +34,48 @@ export async function GET(request: Request) {
       ]
     }
 
+    let where: any = baseWhere
     let userAssignments: Record<string, { isRead: boolean }> = {}
 
+    // 🔹 Restrict emails for normal users
     if (!isSuperAdmin) {
       const assigned = await prisma.userEmailAssignment.findMany({
         where: { userId: user.id },
         select: { email: true, isRead: true }
       })
 
-      const assignedEmails = assigned.map(a => a.email).filter(Boolean)
+      const assignedEmails = assigned
+        .map(a => a.email)
+        .filter(Boolean)
 
       if (assignedEmails.length === 0) {
-        return NextResponse.json({ emails: [], total: 0, page, pages: 0 })
+        return NextResponse.json({
+          emails: [],
+          total: 0,
+          page,
+          pages: 0
+        })
       }
 
-      where.OR.push({ to: { in: assignedEmails } })
-      where.OR.push({ fromEmail: { in: assignedEmails } })
+      // IMPORTANT: Use AND to strictly limit access
+      where = {
+        AND: [
+          baseWhere,
+          {
+            OR: [
+              { to: { in: assignedEmails } },
+              { fromEmail: { in: assignedEmails } }
+            ]
+          }
+        ]
+      }
 
       userAssignments = Object.fromEntries(
         assigned.map(a => [a.email!, { isRead: a.isRead }])
       )
     }
 
-    // Search filter
+    // 🔹 Search filter
     if (search) {
       const searchFilter = {
         OR: [
@@ -66,11 +87,12 @@ export async function GET(request: Request) {
         ]
       }
 
-      where = where.OR?.length > 1
-        ? { AND: [where, searchFilter] }
-        : { ...where, ...searchFilter }
+      where = {
+        AND: [where, searchFilter]
+      }
     }
 
+    // 🔹 Fetch emails + count
     const [emails, total] = await Promise.all([
       prisma.email.findMany({
         where,
@@ -82,14 +104,17 @@ export async function GET(request: Request) {
       prisma.email.count({ where })
     ])
 
-    // Override isRead for assigned users
+    // 🔹 Override isRead for assigned users
     const finalEmails = emails.map(email => {
       if (isSuperAdmin) return email
 
-      const assignedKey = userAssignments[email.to ?? ''] || userAssignments[email.fromEmail ?? '']
+      const assignedKey =
+        userAssignments[email.to ?? ''] ||
+        userAssignments[email.fromEmail ?? '']
 
-      
-return assignedKey ? { ...email, isRead: assignedKey.isRead } : email
+      return assignedKey
+        ? { ...email, isRead: assignedKey.isRead }
+        : email
     })
 
     return NextResponse.json({
@@ -98,9 +123,12 @@ return assignedKey ? { ...email, isRead: assignedKey.isRead } : email
       page,
       pages: Math.ceil(total / perPage)
     })
-  } catch (err) {
-    console.error('Email API error:', err)
-    
-return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+  } catch (error) {
+    console.error('Email API error:', error)
+
+    return NextResponse.json(
+      { error: 'Internal Server Error' },
+      { status: 500 }
+    )
   }
 }

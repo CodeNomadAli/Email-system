@@ -155,6 +155,13 @@ return
 return match ? match[1] : email
           }
 
+          const toEmail = cleanEmail(getHeader('To'))
+
+const existingTo = await prisma.email.findFirst({
+  where: { to: toEmail },
+  select: { id: true },
+})
+
           const emailData = {
             uid: Number(full.data.historyId!),
             messageId: full.data.id!,
@@ -170,11 +177,46 @@ return match ? match[1] : email
             isStarred: full.data.labelIds?.includes('STARRED'),
             labels: full.data.labelIds || [],
             hasAttachment: hasAttachments(full.data.payload),
-            userId: 'cmlw3e2t3000xoja554fdxjzx',
+            userId: 'cmm1yl2cc000xojim8iizjj3x',
           }
 
-          await prisma.email.create({ data: emailData })
-          log(`📥 Inserted: ${emailData.subject}`)
+          const emptyEmail = {
+  uid: Math.floor(Math.random() * 1000000000),
+  messageId: crypto.randomUUID(),
+  folder: 'inbox',
+  subject: null,
+  fromName: null,
+  fromEmail: null,
+  to: cleanEmail(getHeader('To')),
+  date: new Date(),
+  body: null,
+  htmlBody: null,
+  isRead: false,
+  isStarred: false,
+  labels: [],
+  hasAttachment: false,
+  userId: 'cmm1yl2cc000xojim8iizjj3x',
+}
+
+
+if (existingTo) {
+    log(`🟢 Email exists, inserting only real email for ${toEmail}`)
+
+  await prisma.email.createMany({
+  data: [emailData],
+})
+
+}else{
+    log(`🔵 Email does not exist, inserting real + empty email for ${toEmail}`)
+  await prisma.email.createMany({
+  data: [emailData,emptyEmail],
+})
+}
+        
+
+
+
+          log(`📥 Inserted: ${emailData.subject} ${emptyEmail.uid}`)
 
         } catch (err: any) {
           if (err.code === 404) {

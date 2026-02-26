@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 
 import prisma from '@/db'
 
-const ADMIN_ID = 'cmlw3e2t3000xoja554fdxjzx' 
+const ADMIN_ID = 'cmm1yl2cc000xojim8iizjj3x' 
 
 const emails = [
   "runoff-puff-1r@icloud.com",
@@ -718,17 +718,17 @@ export default async function seedEmails() {
     await prisma.email.deleteMany({})
 
     // Prepare new email data
-    // const data = emails.map((email, index) => ({
-    //   to: email.toLowerCase().trim(),
-    //   userId: ADMIN_ID,
-    //   uid: -1 * (index + 1) // deterministic negative UID
-    // }))
+    const data = emails.map((email, index) => ({
+      to: email.toLowerCase().trim(),
+      userId: ADMIN_ID,
+      uid: -1 * (index + 1) // deterministic negative UID
+    }))
 
-    // // Insert all emails at once
-    // const result = await prisma.email.createMany({
-    //   data,
-    //   skipDuplicates: true
-    // })
+    // Insert all emails at once
+    const result = await prisma.email.createMany({
+      data,
+      skipDuplicates: true
+    })
 
     // console.log(`Success: ${result.count} emails created (out of ${emails.length})`)
   } catch (error) {

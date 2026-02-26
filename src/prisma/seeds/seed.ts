@@ -3,7 +3,7 @@ import permissionsSeed from './permissions'
 import roleSeed from './role'
 import countrySeed from './countrySeed'
 import prisma from '@/db'
-import mailSeedConsole from './mailSeedConsole';  // make sure 'from' is included
+// import mailSeedConsole from './mailSeedConsole';  // make sure 'from' is included
 import POST from './emailseed'
 
 async function main() {
