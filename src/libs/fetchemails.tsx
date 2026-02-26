@@ -1,4 +1,5 @@
 // lib/fetchEmails.ts
+
 import prisma from '@/db'
 
 export interface EmailTableRow {
@@ -43,7 +44,10 @@ export default async function fetchEmails(
 
     const superAdmin = await isSuperAdmin(userId)
 
-    const whereFilter: any = { deletedAt: false }
+    const whereFilter: any = {
+        deletedAt: false,
+        subject: null
+    }
 
     if (!superAdmin) {
         whereFilter.assignments = { some: { userId: String(userId) } }
@@ -103,7 +107,7 @@ export default async function fetchEmails(
             assignedTo: assignedUsers,
             assignedUserIds,
             folder: email.folder,
-            createdAt: email.date // ← fixed field name (was createdAt)
+            createdAt: email.createdAt // ← fixed field name (was createdAt)
         }
     })
 

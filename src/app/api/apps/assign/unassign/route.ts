@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     const { email, userId } = body
 
     if (!email || !userId || !Array.isArray(userId) || userId.length === 0) {
-      return NextResponse.json({ error: 'User not found' }, { status: 400 })
+      return NextResponse.json({ error: 'This Email not have any user for delete' }, { status: 400 })
     }
 
     // Delete assignments matching email and user IDs
