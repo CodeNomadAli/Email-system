@@ -1,5 +1,6 @@
+import crypto from 'crypto'
+
 import { google } from 'googleapis'
-import { PubSub } from '@google-cloud/pubsub'
 
 import prisma from '@/db'
 
@@ -31,8 +32,8 @@ function getGmailClient() {
   )
 
   auth.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN })
-  
-return google.gmail({ version: 'v1', auth })
+
+  return google.gmail({ version: 'v1', auth })
 }
 
 /* =======================================================
@@ -64,27 +65,6 @@ export async function startGmailWatch() {
     console.error(err)
   }
 }
-
-/* =======================================================
-   PUBSUB SUBSCRIBER
-======================================================= */
-const pubSubClient = new PubSub({
-  projectId: 'web-application-488012',
-  keyFilename: '/root/gmail-watcher-key.json',
-})
-
-const subscription = pubSubClient.subscription('gmail-notifications-sub')
-
-subscription.on('message', async (message) => {
-  log('📬 Gmail push received')
-  message.ack()
-  await syncEmails()
-})
-
-subscription.on('error', (err) => {
-  log('❌ Pub/Sub error')
-  console.error(err)
-})
 
 /* =======================================================
    SYNC EMAILS
@@ -127,7 +107,6 @@ return
 
         if (!msgId) continue
 
-        // Skip if message already exists
         const exists = await prisma.email.findUnique({
           where: { messageId: msgId },
           select: { id: true },
@@ -142,7 +121,6 @@ return
             format: 'full',
           })
 
-          // Skip if message deleted (404)
           if (!full.data || !full.data.payload) continue
 
           const headers = full.data.payload?.headers || []
@@ -157,10 +135,10 @@ return match ? match[1] : email
 
           const toEmail = cleanEmail(getHeader('To'))
 
-const existingTo = await prisma.email.findFirst({
-  where: { to: toEmail },
-  select: { id: true },
-})
+          const existingTo = await prisma.email.findFirst({
+            where: { to: toEmail },
+            select: { id: true },
+          })
 
           const emailData = {
             uid: Number(full.data.historyId!),
@@ -181,40 +159,30 @@ const existingTo = await prisma.email.findFirst({
           }
 
           const emptyEmail = {
-  uid: Math.floor(Math.random() * 1000000000),
-  messageId: crypto.randomUUID(),
-  folder: 'inbox',
-  subject: null,
-  fromName: null,
-  fromEmail: null,
-  to: cleanEmail(getHeader('To')),
-  date: new Date(),
-  body: null,
-  htmlBody: null,
-  isRead: false,
-  isStarred: false,
-  labels: [],
-  hasAttachment: false,
-  userId: 'cmm1yl2cc000xojim8iizjj3x',
-}
+            uid: Math.floor(Math.random() * 1000000000),
+            messageId: crypto.randomUUID(),
+            folder: 'inbox',
+            subject: null,
+            fromName: null,
+            fromEmail: null,
+            to: cleanEmail(getHeader('To')),
+            date: new Date(),
+            body: null,
+            htmlBody: null,
+            isRead: false,
+            isStarred: false,
+            labels: [],
+            hasAttachment: false,
+            userId: 'cmm1yl2cc000xojim8iizjj3x',
+          }
 
-
-if (existingTo) {
-    log(`🟢 Email exists, inserting only real email for ${toEmail}`)
-
-  await prisma.email.createMany({
-  data: [emailData],
-})
-
-}else{
-    log(`🔵 Email does not exist, inserting real + empty email for ${toEmail}`)
-  await prisma.email.createMany({
-  data: [emailData,emptyEmail],
-})
-}
-        
-
-
+          if (existingTo) {
+            log(`🟢 Email exists, inserting only real email for ${toEmail}`)
+            await prisma.email.createMany({ data: [emailData] })
+          } else {
+            log(`🔵 Email does not exist, inserting real + empty email for ${toEmail}`)
+            await prisma.email.createMany({ data: [emailData, emptyEmail] })
+          }
 
           log(`📥 Inserted: ${emailData.subject} ${emptyEmail.uid}`)
 
@@ -228,7 +196,6 @@ if (existingTo) {
       }
     }
 
-    // Update lastHistoryId to latest
     if (historyRes.data.historyId) lastHistoryId = historyRes.data.historyId
 
   } catch (err: any) {
@@ -287,6 +254,12 @@ return payload.parts.some((p: any) => p.filename)
 }
 
 /* =======================================================
-   INIT
+   INIT POLLING (Fully Free)
 ======================================================= */
 startGmailWatch().then(() => log('🏁 Gmail watcher initialized'))
+
+// Poll every 30 seconds instead of Pub/Sub
+setInterval(async () => {
+  log('⏱️ Polling Gmail for new messages...')
+  await syncEmails()
+}, 30_000) // 30 seconds
