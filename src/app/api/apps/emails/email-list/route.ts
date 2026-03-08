@@ -1,4 +1,5 @@
 // app/api/emails/route.ts
+export const dynamic = "force-dynamic";
 import { NextResponse } from 'next/server'
 import prisma from '@/db'
 import { getAuthUser } from '@/utils/backend-helper'
