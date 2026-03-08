@@ -20,10 +20,10 @@ jobs:
           node-version: 20
 
       # Step 3: install dependencies & build (optional)
-      - name: Install & Build
-        run: |
-          npm install
-          npm run build
+   - name: Install & Build
+  run: |
+    npm install --legacy-peer-deps
+    npm run build
 
       # Step 4: deploy to server via SSH
       - name: Deploy to Server
