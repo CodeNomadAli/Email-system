@@ -2,6 +2,8 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+export const dynamic = 'force-dynamic';
+
 import crypto from 'crypto';
 import https from 'https';
 import dns from 'dns';
@@ -72,7 +74,7 @@ const GOOGLE_REFRESH_TOKEN = process.env.GOOGLE_REFRESH_TOKEN!;
     throw new Error('Missing Gmail OAuth2 credentials!');
   }
 
-  
+
   const auth = new google.auth.OAuth2(
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
