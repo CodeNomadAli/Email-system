@@ -10,18 +10,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1: checkout the code
       - uses: actions/checkout@v3
 
+      # Step 2: setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 20
 
+      # Step 3: install dependencies & build (optional)
       - name: Install & Build
         run: |
           npm install
           npm run build
 
+      # Step 4: deploy to server via SSH
       - name: Deploy to Server
         uses: appleboy/ssh-action@v0.1.9
         with:
@@ -29,9 +33,10 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_KEY }}
           script: |
-            cd /var/www/flashxmail
+            cd ~/htdocs/flashxmail.com
             git reset --hard
             git pull origin main
-            npm install --force
+            npm install --force 
             npm run build
-            pm2 restart flashxmail || pm2 start npm --name "flashxmail" -- start\
+            pm2 restart flashxmail || pm2 start npm --name "flashxmail" -- start
+            pm2 restart email-system || pm2 start npm --name "email-system" -- start
