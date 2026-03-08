@@ -1,4 +1,4 @@
-name: Auto Deploy FlashXMail
+name: Auto Deploy FlashXMail + Email System
 
 on:
   push:
@@ -10,22 +10,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: checkout the code
-      - uses: actions/checkout@v3
+      # Step 1: Checkout code
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-      # Step 2: setup Node.js
+      # Step 2: Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 20
 
-      # Step 3: install dependencies & build (optional)
+      # Step 3: Install dependencies & build locally (optional)
       - name: Install & Build
         run: |
-          npm install --force 
+          npm install --legacy-peer-deps
           npm run build
 
-      # Step 4: deploy to server via SSH
+      # Step 4: Deploy to Server via SSH
       - name: Deploy to Server
         uses: appleboy/ssh-action@v0.1.9
         with:
@@ -34,9 +35,18 @@ jobs:
           key: ${{ secrets.SERVER_KEY }}
           script: |
             cd ~/htdocs/flashxmail.com
+
+            # Set database environment variable
+            export DATABASE_URL="${{ secrets.DATABASE_URL }}"
+
+            # Pull latest code
             git reset --hard
             git pull origin main
-            npm install --force 
+
+            # Install dependencies and build on server
+            npm install --legacy-peer-deps
             npm run build
+
+            # Restart PM2 processes or start if not running
             pm2 restart flashxmail || pm2 start npm --name "flashxmail" -- start
             pm2 restart email-system || pm2 start npm --name "email-system" -- start
