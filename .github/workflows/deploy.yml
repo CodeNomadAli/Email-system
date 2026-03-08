@@ -20,7 +20,7 @@ jobs:
         with:
           node-version: 20
 
-      # Step 3: Install dependencies & build locally (optional)
+      # Step 3: Install dependencies & build locally
       - name: Install & Build
         run: |
           npm install --legacy-peer-deps
@@ -36,17 +36,17 @@ jobs:
           script: |
             cd ~/htdocs/flashxmail.com
 
-            # Set database environment variable
+            # 🔹 Export DATABASE_URL for Prisma
             export DATABASE_URL="${{ secrets.DATABASE_URL }}"
 
             # Pull latest code
             git reset --hard
             git pull origin main
 
-            # Install dependencies and build on server
+            # Install dependencies & build
             npm install --legacy-peer-deps
             npm run build
 
-            # Restart PM2 processes or start if not running
+            # Restart both apps with PM2
             pm2 restart flashxmail || pm2 start npm --name "flashxmail" -- start
             pm2 restart email-system || pm2 start npm --name "email-system" -- start
