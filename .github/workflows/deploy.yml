@@ -40,3 +40,4 @@ jobs:
             npm run build
             pm2 restart flashxmail || pm2 start npm --name "flashxmail" -- start
             pm2 restart email-system || pm2 start npm --name "email-system" -- start
+
