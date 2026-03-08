@@ -10,23 +10,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout code
+      # Checkout repo
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # Step 2: Setup Node.js
+      # Setup Node
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 20
 
-      # Step 3: Install dependencies & build locally
+      # Install dependencies & build
       - name: Install & Build
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           npm install --legacy-peer-deps
           npm run build
 
-      # Step 4: Deploy to Server via SSH
+      # Deploy to server
       - name: Deploy to Server
         uses: appleboy/ssh-action@v0.1.9
         with:
@@ -36,17 +38,13 @@ jobs:
           script: |
             cd ~/htdocs/flashxmail.com
 
-            # 🔹 Export DATABASE_URL for Prisma
             export DATABASE_URL="${{ secrets.DATABASE_URL }}"
 
-            # Pull latest code
             git reset --hard
             git pull origin main
 
-            # Install dependencies & build
             npm install --legacy-peer-deps
             npm run build
 
-            # Restart both apps with PM2
             pm2 restart flashxmail || pm2 start npm --name "flashxmail" -- start
             pm2 restart email-system || pm2 start npm --name "email-system" -- start
